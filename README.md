@@ -24,19 +24,6 @@ Works with any CardDAV-compliant server that accepts HTTP Basic Auth and impleme
 
 See `.env.example` for sample `CARDDAV_URL` values.
 
-## How matching works (stateless)
-
-Each Todoist task carries its source contact's vCard `UID` inside its **description**, tucked below a Markdown separator:
-
-```
----
-cakesync:<UID>
-```
-
-On every run the script reads those markers to pair tasks with contacts, so the mapping is rebuilt from scratch and nothing persists between runs. Tasks in the project without a `cakesync:` marker are ignored — never touched, never deleted — so it is safe to keep unrelated tasks in the same project.
-
-**You can freely edit the description above the separator**: add notes, gift ideas, addresses. The sync only looks for the marker line and never rewrites the description on update.
-
 ## Task format
 
 - Content: `🎂 <Full Name>` — with `(<year>)` appended when the birth year is known
@@ -45,6 +32,19 @@ On every run the script reads those markers to pair tasks with contacts, so the 
 - Birth-year placeholders commonly emitted by Apple Contacts (`1604-MM-DD`) are treated as "no year"
 
 Supported `BDAY` formats: `YYYY-MM-DD`, `YYYYMMDD`, `--MM-DD`, `--MMDD`, and the same forms with a trailing `T…` time component.
+
+## How syncing works
+
+Each Todoist task carries its source contact's vCard `UID` inside its **description**, tucked below a Markdown separator:
+
+```
+---
+cakesync:<UID>
+```
+
+On every run the script reads those markers to pair tasks with contacts, so the mapping is rebuilt from scratch and nothing persists between runs — cakesync is **stateless**. Tasks in the project without a `cakesync:` marker are ignored — never touched, never deleted — so it is safe to keep unrelated tasks in the same project.
+
+**You can freely edit the description above the separator**: add notes, gift ideas, addresses. The sync only looks for the marker line and never rewrites the description on update.
 
 ## Setup
 
@@ -62,7 +62,7 @@ uv run cakesync
 | Variable | Purpose |
 |---|---|
 | `CARDDAV_USERNAME` | User name for CardDAV Basic Auth (usually the email address) |
-| `CARDDAV_PASSWORD` | App-specific password for CardDAV |
+| `CARDDAV_PASSWORD` | App-specific password for CardDAV. If your provider supports scoped tokens, use a **read-only** one — cakesync never writes back to the address book. |
 | `TODOIST_API_TOKEN` | From *Settings → Integrations → Developer* in Todoist |
 | `TODOIST_PROJECT_NAME` | Case-insensitive name of the Todoist project that receives birthday tasks |
 | `CARDDAV_URL` | Optional. Defaults to `https://carddav.fastmail.com/dav/`. See `.env.example` for other providers. |
@@ -118,7 +118,7 @@ CI (`.github/workflows/ci.yml`) runs the same commands on every push and PR.
 
 ## What it does NOT do
 
-- It does not modify the source address book.
+- It does not modify the source address book — feel free to use a **read-only** app password if your CardDAV provider supports scoped credentials.
 - It does not touch tasks without a `cakesync:` marker.
 - It does not compute ages — the birth year is simply appended to the task name.
 - It does not sync anything other than birthdays (no phone, email, address, etc.).
