@@ -26,18 +26,21 @@ See `.env.example` for sample `CARDDAV_URL` values.
 
 ## How matching works (stateless)
 
-Each Todoist task carries its source contact's vCard `UID` inside its **description**, formatted as:
+Each Todoist task carries its source contact's vCard `UID` inside its **description**, tucked below a Markdown separator:
 
 ```
-vcard-uid: <UID>
+---
+cakesync:<UID>
 ```
 
-On every run the script reads those markers to pair tasks with contacts, so the mapping is rebuilt from scratch and nothing persists between runs. Tasks in the project without a `vcard-uid:` marker are ignored (never touched, never deleted), so it is safe to keep unrelated tasks in the same project.
+On every run the script reads those markers to pair tasks with contacts, so the mapping is rebuilt from scratch and nothing persists between runs. Tasks in the project without a `cakesync:` marker are ignored — never touched, never deleted — so it is safe to keep unrelated tasks in the same project.
+
+**You can freely edit the description above the separator**: add notes, gift ideas, addresses. The sync only looks for the marker line and never rewrites the description on update.
 
 ## Task format
 
 - Content: `🎂 <Full Name>` — with `(<year>)` appended when the birth year is known
-- Description: `vcard-uid: <UID>`
+- Description: `---\ncakesync:<UID>` on creation; preserved as-is on updates
 - Due: `every <day> <Month>` (e.g. `every 15 January`), yearly recurring
 - Birth-year placeholders commonly emitted by Apple Contacts (`1604-MM-DD`) are treated as "no year"
 
@@ -116,7 +119,7 @@ CI (`.github/workflows/ci.yml`) runs the same commands on every push and PR.
 ## What it does NOT do
 
 - It does not modify the source address book.
-- It does not touch tasks without a `vcard-uid:` marker.
+- It does not touch tasks without a `cakesync:` marker.
 - It does not compute ages — the birth year is simply appended to the task name.
 - It does not sync anything other than birthdays (no phone, email, address, etc.).
 

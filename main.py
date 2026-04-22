@@ -2,8 +2,8 @@
 
 Works with any CardDAV-compliant server (Fastmail, iCloud, Nextcloud, Radicale,
 Baïkal, SOGo…). Stateless: every task carries its source contact UID inside the
-description (`vcard-uid: <UID>`), so the script can rebuild the mapping at each
-run and decide what to create, update or delete.
+description (`cakesync:<UID>` on its own line), so the script can rebuild the
+mapping at each run and decide what to create, update or delete.
 """
 
 from __future__ import annotations
@@ -30,7 +30,8 @@ log = logging.getLogger("sync")
 
 
 BIRTHDAY_EMOJI = "\U0001f382"  # 🎂
-UID_MARKER_RE = re.compile(r"vcard-uid:\s*(\S+)", re.IGNORECASE)
+# `cakesync:<uid>` must sit on its own line anywhere in the description.
+UID_MARKER_RE = re.compile(r"^cakesync:\s*(\S+)\s*$", re.MULTILINE)
 DAV_NS = {"d": "DAV:", "c": "urn:ietf:params:xml:ns:carddav"}
 MONTHS = [
     "January",
@@ -309,17 +310,25 @@ class TodoistClient:
         )
         r.raise_for_status()
 
-    def update_task(self, task_id: str, content: str, description: str, due_string: str) -> None:
+    def update_task(
+        self,
+        task_id: str,
+        content: str,
+        due_string: str,
+        description: str | None = None,
+    ) -> None:
         if self.dry_run:
             return
+        payload: dict[str, object] = {
+            "content": content,
+            "due_string": due_string,
+            "due_lang": "en",
+        }
+        if description is not None:
+            payload["description"] = description
         r = self._session.post(
             f"{TODOIST_API}/tasks/{task_id}",
-            json={
-                "content": content,
-                "description": description,
-                "due_string": due_string,
-                "due_lang": "en",
-            },
+            json=payload,
             timeout=30,
         )
         r.raise_for_status()
@@ -362,7 +371,9 @@ def _task_due_string(bday: Birthday) -> str:
 
 
 def _task_description(contact: Contact) -> str:
-    return f"vcard-uid: {contact.uid}"
+    # Used only when creating a new task. On update we leave the description
+    # alone so the user's own notes (added above the separator) are preserved.
+    return f"---\ncakesync:{contact.uid}"
 
 
 def _due_matches(existing_task: dict, bday: Birthday) -> bool:
@@ -480,24 +491,22 @@ def main(argv: list[str] | None = None) -> None:
 
     for uid, contact in contacts_by_uid.items():
         content = _task_content(contact)
-        description = _task_description(contact)
         due_string = _task_due_string(contact.birthday)
 
         existing = tasks_by_uid.get(uid)
         if existing is None:
             log.info("  %s+ create: %s", prefix, content)
-            client.create_task(project_id, content, description, due_string)
+            client.create_task(project_id, content, _task_description(contact), due_string)
             created += 1
             continue
 
-        needs_update = (
-            existing.get("content") != content
-            or (existing.get("description") or "") != description
-            or not _due_matches(existing, contact.birthday)
+        needs_update = existing.get("content") != content or not _due_matches(
+            existing, contact.birthday
         )
         if needs_update:
             log.info("  %s~ update: %s", prefix, content)
-            client.update_task(existing["id"], content, description, due_string)
+            # description intentionally omitted — preserves any user notes.
+            client.update_task(existing["id"], content, due_string)
             updated += 1
         else:
             unchanged += 1
