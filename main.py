@@ -163,6 +163,7 @@ def main(argv: list[str] | None = None) -> None:
             allow_delete=project_id not in blocked,
             dry_run=args.dry_run,
             stats=stats,
+            tz=config.timezone,
             auto_reminder_offset=auto_reminder_offset,
             reminders=reminders,
         )

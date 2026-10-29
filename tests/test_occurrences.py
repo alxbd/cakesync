@@ -8,6 +8,7 @@ from config import CalendarConfig
 from sync import _duration, _occurrence_content, occurrence_tasks
 
 PARIS = ZoneInfo("Europe/Paris")
+PHNOM_PENH = ZoneInfo("Asia/Phnom_Penh")
 # Before every occurrence used here, so none of them has started yet.
 NOW = datetime(2026, 8, 1, 12, 0, tzinfo=UTC)
 
@@ -135,13 +136,14 @@ def test_non_checkable_prefix_comes_before_the_emoji():
     content = _occurrence_content(
         cfg(todoist_create_checkable_tasks=False, todoist_task_emoji="X"),
         timed(datetime(2026, 8, 10, 14, 0, tzinfo=UTC)),
+        UTC,
     )
     assert content == "* X Standup"
 
 
 def test_checkable_task_has_no_star():
     content = _occurrence_content(
-        cfg(todoist_task_emoji="X"), timed(datetime(2026, 8, 10, 14, 0, tzinfo=UTC))
+        cfg(todoist_task_emoji="X"), timed(datetime(2026, 8, 10, 14, 0, tzinfo=UTC)), UTC
     )
     assert content == "X Standup"
 
@@ -171,7 +173,6 @@ def test_all_day_event_gets_an_absolute_reminder_instead():
 
 
 def test_all_day_reminder_already_past_is_not_sent():
-    # 23:00 UTC is past 09:00 local on 10 Nov in every timezone.
     late = datetime(2026, 11, 10, 23, 0, tzinfo=UTC)
     tasks = occurrence_tasks(
         cfg(todoist_all_day_reminder_time_24h="09:00"),
@@ -213,8 +214,6 @@ def workshop() -> Occurrence:
 
 
 def at(day: int, hour: int = 12) -> datetime:
-    # Midday UTC falls on the same calendar day in nearly every timezone, so
-    # these tests do not depend on where they run.
     return datetime(2026, 11, day, hour, 0, tzinfo=UTC)
 
 
@@ -224,16 +223,17 @@ def tasks_for(mode: str, occ: Occurrence, now: datetime):
 
 
 def test_multi_day_title_shows_the_last_day():
-    assert _occurrence_content(cfg(), workshop()) == "Holiday (until 13 Nov)"
+    assert _occurrence_content(cfg(), workshop(), UTC) == "Holiday (until 13 Nov)"
 
 
 def test_single_day_title_has_no_suffix():
-    assert _occurrence_content(cfg(), allday(date(2026, 11, 10), date(2026, 11, 11))) == "Holiday"
+    single = allday(date(2026, 11, 10), date(2026, 11, 11))
+    assert _occurrence_content(cfg(), single, UTC) == "Holiday"
 
 
 def test_timed_event_past_midnight_is_not_multi_day():
     evening = timed(at(10, 22), datetime(2026, 11, 11, 1, 0, tzinfo=UTC))
-    assert _occurrence_content(cfg(), evening) == "Standup"
+    assert _occurrence_content(cfg(), evening, UTC) == "Standup"
 
 
 def test_none_mode_skips_multi_day_events():
@@ -278,11 +278,30 @@ def test_first_day_mode_drops_it_after_the_first_day():
     assert tasks_for("first_day", workshop(), at(12)) == []
 
 
+def test_the_day_ends_at_midnight_in_the_configured_timezone():
+    # 20:00 UTC on 10 Nov is already 03:00 on 11 Nov in Phnom Penh, so the
+    # first day is over there but not in UTC.
+    instant = at(10, 20)
+    assert tasks_for("first_day", workshop(), instant) != []
+    assert tasks_for("first_day", workshop(), instant.astimezone(PHNOM_PENH)) == []
+
+
+def test_all_day_reminder_time_is_read_in_the_configured_timezone():
+    # 03:00 UTC on 10 Nov is 10:00 in Phnom Penh: a 09:00 reminder there has
+    # already passed, while 09:00 UTC is still ahead.
+    instant = at(10, 3)
+    assert tasks_for("rolling", workshop(), instant)[0].absolute_reminder is not None
+    assert (
+        tasks_for("rolling", workshop(), instant.astimezone(PHNOM_PENH))[0].absolute_reminder
+        is None
+    )
+
+
 # -- title style ------------------------------------------------------------
 
 
 def _title(**kwargs):
-    return _occurrence_content(cfg(**kwargs), timed(datetime(2026, 8, 10, 14, 0, tzinfo=UTC)))
+    return _occurrence_content(cfg(**kwargs), timed(datetime(2026, 8, 10, 14, 0, tzinfo=UTC)), UTC)
 
 
 def test_normal_style_leaves_the_title_bare():

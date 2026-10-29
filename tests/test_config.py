@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-from config import ConfigError, parse_config
+from config import ConfigError, parse_config, parse_timezone
 
 COMPLETE = """
 calendars:
@@ -140,6 +140,28 @@ def test_multi_day_mode_is_parsed():
 def test_title_style_is_case_insensitive():
     _, calendars = load(entry(todoist_task_title_style="Italic"))
     assert calendars[0].todoist_task_title_style == "italic"
+
+
+# -- timezone ---------------------------------------------------------------
+
+
+def test_timezone_is_parsed():
+    assert str(parse_timezone(yaml.safe_load("timezone: Asia/Phnom_Penh"))) == "Asia/Phnom_Penh"
+
+
+def test_timezone_is_required():
+    with pytest.raises(ConfigError, match="timezone is required"):
+        parse_timezone(yaml.safe_load(COMPLETE))
+
+
+def test_unknown_timezone_is_rejected():
+    with pytest.raises(ConfigError, match="unknown timezone 'Mars/Olympus'"):
+        parse_timezone({"timezone": "Mars/Olympus"})
+
+
+def test_timezone_is_an_allowed_top_level_key():
+    _, calendars = load("timezone: Asia/Phnom_Penh\n" + COMPLETE)
+    assert len(calendars) == 1
 
 
 # -- birthdays --------------------------------------------------------------

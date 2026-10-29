@@ -84,6 +84,7 @@ def run(client, desired, synced_kinds, allow_delete=True):
         allow_delete=allow_delete,
         dry_run=False,
         stats=stats,
+        tz=UTC,
     )
     return stats
 

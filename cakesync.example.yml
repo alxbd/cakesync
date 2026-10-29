@@ -12,6 +12,16 @@
 # Write "" for an empty text value. Quote a value that starts with an emoji or
 # a special character.
 
+# The timezone cakesync works in. Required. It decides what "today" is, when a
+# day is over, and whether a reminder time has already passed. It is also used
+# for calendar events saved without a timezone. Set it to the timezone of your
+# Todoist account (Todoist settings, General), because Todoist uses that one
+# to show a task as Overdue and to fire reminders. The timezone of the machine
+# that runs cakesync plays no part, so a server in UTC works the same.
+# Use an IANA name, for example Europe/Paris, America/New_York or
+# Asia/Phnom_Penh.
+timezone: Europe/Paris
+
 # Contact birthdays, read from CardDAV. Each contact with a birthday becomes one
 # task that repeats every year. The task title is the contact's name, followed
 # by the birth year in brackets when the contact has one.

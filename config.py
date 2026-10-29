@@ -18,6 +18,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
@@ -100,6 +101,7 @@ class Credentials:
 
 @dataclass(frozen=True)
 class AppConfig:
+    timezone: ZoneInfo
     birthdays: BirthdayConfig | None
     calendars: list[CalendarConfig]
     carddav: Credentials | None
@@ -288,7 +290,7 @@ def parse_config(data: Any) -> tuple[BirthdayConfig | None, list[CalendarConfig]
         data = {}
     if not isinstance(data, dict):
         raise ConfigError("cakesync.yml: top level must be a mapping")
-    _unknown_keys(data, {"birthdays", "calendars"}, "cakesync.yml")
+    _unknown_keys(data, {"timezone", "birthdays", "calendars"}, "cakesync.yml")
 
     birthdays = _parse_birthdays(data.get("birthdays"))
 
@@ -313,6 +315,28 @@ def parse_config(data: Any) -> tuple[BirthdayConfig | None, list[CalendarConfig]
         calendars.append(cal)
 
     return birthdays, calendars
+
+
+def parse_timezone(data: Any) -> ZoneInfo:
+    """The timezone cakesync reasons in. Required.
+
+    It decides what "today" is, when a day is over and whether a reminder time
+    has passed, so it must match the Todoist account: Todoist uses that one to
+    show a task as Overdue and to fire reminders. The machine's own timezone
+    plays no part, so a server in UTC behaves like a laptop in Phnom Penh.
+    """
+    name = _as_str((data or {}).get("timezone"), "timezone")
+    if not name:
+        raise ConfigError(
+            "timezone is required, e.g. timezone: Europe/Paris. "
+            "Use the timezone of your Todoist account."
+        )
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ConfigError(
+            f"timezone: unknown timezone {name!r}, expected an IANA name such as Europe/Paris"
+        ) from None
 
 
 # ---------------------------------------------------------------------------
@@ -349,6 +373,7 @@ def load_config(path: str | None = None) -> AppConfig:
         with config_path.open("r", encoding="utf-8") as fh:
             data = yaml.safe_load(fh)
         birthdays, calendars = parse_config(data)
+        timezone = parse_timezone(data)
     except (ConfigError, yaml.YAMLError) as e:
         log.error("configuration error: %s", e)
         sys.exit(1)
@@ -368,6 +393,7 @@ def load_config(path: str | None = None) -> AppConfig:
         sys.exit(1)
 
     return AppConfig(
+        timezone=timezone,
         birthdays=birthdays,
         calendars=calendars,
         carddav=carddav,

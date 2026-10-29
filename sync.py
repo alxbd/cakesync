@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from zoneinfo import ZoneInfo
 
 import markers
@@ -151,11 +151,11 @@ def birthday_tasks(
 # ---------------------------------------------------------------------------
 
 
-def _local_day(value: datetime | date) -> date:
-    return value.astimezone().date() if isinstance(value, datetime) else value
+def _local_day(value: datetime | date, tz: tzinfo) -> date:
+    return value.astimezone(tz).date() if isinstance(value, datetime) else value
 
 
-def _last_day(occ: Occurrence) -> date | None:
+def _last_day(occ: Occurrence, tz: tzinfo) -> date | None:
     """The last day a multi-day occurrence covers, or None for a single-day one.
 
     An all-day DTEND is exclusive: a 10-13 Nov event ends on 14 Nov. A timed
@@ -164,16 +164,16 @@ def _last_day(occ: Occurrence) -> date | None:
     if occ.end is None:
         return None
     if occ.all_day:
-        last = _local_day(occ.end) - timedelta(days=1)
-        return last if last > _local_day(occ.start) else None
+        last = _local_day(occ.end, tz) - timedelta(days=1)
+        return last if last > _local_day(occ.start, tz) else None
     if occ.end - occ.start <= timedelta(minutes=MAX_DURATION_MINUTES):
         return None
-    return _local_day(occ.end - timedelta(seconds=1))
+    return _local_day(occ.end - timedelta(seconds=1), tz)
 
 
-def _occurrence_content(cfg: CalendarConfig, occ: Occurrence) -> str:
+def _occurrence_content(cfg: CalendarConfig, occ: Occurrence, tz: tzinfo) -> str:
     text = occ.summary
-    last = _last_day(occ)
+    last = _last_day(occ, tz)
     if last is not None:
         text = f"{text} (until {last.day} {MONTHS[last.month - 1][:3]})"
     return _task_title(
@@ -206,27 +206,33 @@ def _duration(occ: Occurrence) -> dict | None:
 def occurrence_tasks(
     cfg: CalendarConfig, project_id: str, occurrences: list[Occurrence], now: datetime
 ) -> list[DesiredTask]:
-    today = now.astimezone().date()
+    """`now` must carry the configured timezone: it decides what "today" is."""
+    tz = now.tzinfo
+    if tz is None:
+        raise ValueError("now must carry the configured timezone")
+    today = now.date()
     mode = cfg.sync_multi_day_mode
     out: list[DesiredTask] = []
     for occ in occurrences:
-        multi_day = _last_day(occ) is not None
+        multi_day = _last_day(occ, tz) is not None
         if multi_day and mode == "none":
             log.debug("%s: %r spans several days, skipped", occ.calendar_name, occ.summary)
             continue
         if multi_day and mode == "first_day":
             # Treat the event as ending with its first day, so the task never
             # sits in Overdue on the days after.
-            first_day_end = datetime.combine(_local_day(occ.start) + timedelta(days=1), time())
+            first_day_end = datetime.combine(
+                _local_day(occ.start, tz) + timedelta(days=1), time(), tzinfo=tz
+            )
             retain = timedelta(hours=cfg.sync_retain_after_end_hours)
-            if first_day_end.astimezone() + retain <= now:
+            if first_day_end + retain <= now:
                 continue
 
         key = markers.calendar_key(occ.calendar_name, occ.uid, occ.occurrence_id)
         body = [line for line in (occ.location, occ.description) if line]
         marker = markers.calendar_marker(occ.calendar_name, occ.uid, occ.occurrence_id, body)
 
-        if multi_day and mode == "rolling" and today > _local_day(occ.start):
+        if multi_day and mode == "rolling" and today > _local_day(occ.start, tz):
             # Keep the running event on today rather than letting it go Overdue.
             # Its reminders belonged to the first day and have already fired.
             due = {"due_date": today.isoformat()}
@@ -244,7 +250,9 @@ def occurrence_tasks(
             due = {"due_datetime": occ.start_utc_iso}
             relative = list(cfg.todoist_reminders_minutes_before)
             absolute = None
-        if absolute and datetime.fromisoformat(absolute).astimezone() <= now:
+        # The reminder time is floating: Todoist fires it at that wall-clock
+        # time in the account's timezone, which `tz` stands for.
+        if absolute and datetime.fromisoformat(absolute).replace(tzinfo=tz) <= now:
             # Todoist accepts a reminder in the past but does not keep it, so
             # sending one would repeat on every run for the rest of the day.
             absolute = None
@@ -254,7 +262,7 @@ def occurrence_tasks(
                 key=key,
                 kind="calendar",
                 project_id=project_id,
-                content=_occurrence_content(cfg, occ),
+                content=_occurrence_content(cfg, occ, tz),
                 body=body,
                 marker=marker,
                 labels=[cfg.todoist_label] if cfg.todoist_label else [],
@@ -272,8 +280,12 @@ def occurrence_tasks(
 # ---------------------------------------------------------------------------
 
 
-def _existing_due_instant(due: dict) -> datetime | None:
-    """Resolve a Todoist due object to a UTC instant, or None if it is all-day."""
+def _existing_due_instant(due: dict, tz: tzinfo) -> datetime | None:
+    """Resolve a Todoist due object to a UTC instant, or None if it is all-day.
+
+    A floating due (no timezone) is read in `tz`, as Todoist reads it in the
+    account's timezone.
+    """
     raw = due.get("date") or ""
     if len(raw) < 11 or raw[10:11] != "T":
         return None
@@ -288,19 +300,20 @@ def _existing_due_instant(due: dict) -> datetime | None:
                 parsed = parsed.replace(tzinfo=ZoneInfo(tz_name))
             except Exception:
                 # Returning None here would make the due compare unequal forever
-                # and rewrite the task on every run. Fall back to local time and
-                # say so, rather than looping in silence.
+                # and rewrite the task on every run. Fall back to the configured
+                # timezone and say so, rather than looping in silence.
                 log.warning(
-                    "Todoist returned an unrecognised timezone %r; comparing in local time",
+                    "Todoist returned an unrecognised timezone %r; comparing in %s",
                     tz_name,
+                    tz,
                 )
-                parsed = parsed.astimezone()
+                parsed = parsed.replace(tzinfo=tz)
         else:
-            parsed = parsed.astimezone()
+            parsed = parsed.replace(tzinfo=tz)
     return parsed.astimezone(UTC)
 
 
-def _due_matches(task: dict, desired: DesiredTask) -> bool:
+def _due_matches(task: dict, desired: DesiredTask, tz: tzinfo) -> bool:
     due = task.get("due") or {}
     raw = due.get("date") or ""
 
@@ -330,7 +343,7 @@ def _due_matches(task: dict, desired: DesiredTask) -> bool:
         return raw[:10] == desired.due["due_date"] and raw[10:11] != "T"
 
     wanted_instant = datetime.fromisoformat(desired.due["due_datetime"].replace("Z", "+00:00"))
-    actual = _existing_due_instant(due)
+    actual = _existing_due_instant(due, tz)
     return actual is not None and actual == wanted_instant.astimezone(UTC)
 
 
@@ -365,14 +378,14 @@ def _description_for(desired: DesiredTask, existing: dict | None) -> str:
     return markers.build_description(notes, desired.marker, desired.body)
 
 
-def _due_label(due: dict) -> str:
-    """The desired due date for log lines, timed ones in this machine's local time."""
+def _due_label(due: dict, tz: tzinfo) -> str:
+    """The desired due date for log lines, timed ones in the configured timezone."""
     if "due_string" in due:
         return due["due_string"]
     if "due_date" in due:
         return due["due_date"]
     instant = datetime.fromisoformat(due["due_datetime"].replace("Z", "+00:00"))
-    return instant.astimezone().strftime("%Y-%m-%d %H:%M")
+    return instant.astimezone(tz).strftime("%Y-%m-%d %H:%M")
 
 
 # ---------------------------------------------------------------------------
@@ -390,6 +403,7 @@ def reconcile_project(
     allow_delete: bool,
     dry_run: bool,
     stats: Stats,
+    tz: tzinfo,
     auto_reminder_offset: int | None = None,
     reminders: list[dict] | None = None,
 ) -> None:
@@ -487,7 +501,7 @@ def reconcile_project(
             if key in completed_keys:
                 stats.skipped_completed += 1
                 continue
-            log.info("  %s+ create: %s (%s)", prefix, want.content, _due_label(want.due))
+            log.info("  %s+ create: %s (%s)", prefix, want.content, _due_label(want.due, tz))
             payload = {
                 "content": want.content,
                 "description": _description_for(want, None),
@@ -505,7 +519,7 @@ def reconcile_project(
 
         task_id = str(existing["id"])
         changed_content = existing.get("content") != want.content
-        changed_due = not _due_matches(existing, want)
+        changed_due = not _due_matches(existing, want, tz)
         changed_duration = not _duration_matches(existing, want)
         changed_labels = not _labels_match(existing, want)
         wanted_description = _description_for(want, existing)
@@ -526,7 +540,7 @@ def reconcile_project(
             or changed_labels
             or changed_description
         ):
-            log.info("  %s~ update: %s (%s)", prefix, want.content, _due_label(want.due))
+            log.info("  %s~ update: %s (%s)", prefix, want.content, _due_label(want.due, tz))
             payload: dict = {"content": want.content, **want.due}
             if "due_string" in want.due:
                 payload["due_lang"] = "en"
@@ -606,7 +620,7 @@ def collect_calendar_tasks(
 
     log.info("  %d calendar(s) on the server: %s", len(available), ", ".join(sorted(available)))
 
-    now = datetime.now(UTC)
+    now = datetime.now(config.timezone)
     for cfg in enabled:
         project_id = project_ids[cfg.todoist_project_name]
         url = available.get(cfg.caldav_calendar_name)
@@ -631,7 +645,7 @@ def collect_calendar_tasks(
 
         try:
             occurrences, skipped = fetch_occurrences(
-                session, url, cfg.caldav_calendar_name, window_start, window_end
+                session, url, cfg.caldav_calendar_name, window_start, window_end, config.timezone
             )
         except CalendarFetchError as e:
             log.error("%s — not touching %r this run", e, cfg.todoist_project_name)

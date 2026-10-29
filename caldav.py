@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
 
 import recurring_ical_events
 import requests
@@ -168,8 +168,12 @@ def fetch_occurrences(
     calendar_name: str,
     window_start: datetime,
     window_end: datetime,
+    tz: tzinfo,
 ) -> tuple[list[Occurrence], int]:
     """Expand a calendar into individual occurrences inside the window.
+
+    A floating event (one with no timezone) is read in `tz`, the configured
+    timezone, rather than in the timezone of the machine running cakesync.
 
     Returns the occurrences plus the number of source objects skipped by the
     loopback guard. Raises CalendarFetchError if the calendar cannot be read,
@@ -218,8 +222,12 @@ def fetch_occurrences(
             start = dtstart.dt
             all_day = isinstance(start, date) and not isinstance(start, datetime)
             if isinstance(start, datetime) and start.tzinfo is None:
-                # Floating event: interpret in the machine's local timezone.
-                start = start.astimezone()
+                start = start.replace(tzinfo=tz)
+            end = _event_end(component, start, all_day)
+            if isinstance(end, datetime) and end.tzinfo is None:
+                # A floating DTEND next to an aware start would make every
+                # later subtraction raise TypeError.
+                end = end.replace(tzinfo=tz)
             occurrences.append(
                 Occurrence(
                     calendar_name=calendar_name,
@@ -228,7 +236,7 @@ def fetch_occurrences(
                     location=_text(component, "LOCATION"),
                     description=_text(component, "DESCRIPTION"),
                     start=start,
-                    end=_event_end(component, start, all_day),
+                    end=end,
                     all_day=all_day,
                 )
             )

@@ -55,12 +55,15 @@ On Fastmail, one app password will not cover both protocols. A CardDAV-scoped pa
 
 ## Configuration
 
-`cakesync.yml` has two top-level blocks. See `cakesync.example.yml` for a commented reference.
+`cakesync.yml` has one top-level key and two blocks. See `cakesync.example.yml` for a commented reference.
 
 ```yaml
-birthdays:            # CardDAV contacts
-calendars:            # one entry per source calendar
+timezone: Asia/Phnom_Penh   # required, the timezone of your Todoist account
+birthdays:                  # CardDAV contacts
+calendars:                  # one entry per source calendar
 ```
+
+`timezone` decides what "today" is, when a day is over, and whether a reminder time has passed. Set it to the timezone of your Todoist account, which Todoist uses to show tasks as Overdue and to fire reminders. The timezone of the machine running cakesync plays no part, so a server in UTC gives the same result as your laptop.
 
 Key names follow one rule, so the schema stays predictable:
 
@@ -107,7 +110,7 @@ An event covers several days when it is all-day and lasts two days or more, or w
 | `first_day` | One task on the first day only, deleted when that day ends (plus `sync_retain_after_end_hours`). |
 | `none` | No task. Run with `--log-level DEBUG` to list the events skipped. |
 
-With `rolling` and `first_day`, the title ends with the last day of the event, for example `📅 Workshop (until 13 Nov)`. Because "today" decides where a rolling task sits, cakesync uses the local date of the machine it runs on, so run it in the same timezone as your Todoist account.
+With `rolling` and `first_day`, the title ends with the last day of the event, for example `📅 Workshop (until 13 Nov)`. "Today" and the end of a day are taken in `timezone`.
 
 ### Finished events and Overdue
 
@@ -147,7 +150,7 @@ Three consequences worth knowing:
 
 - **Labels are additive.** cakesync makes sure its own label is present but never removes labels you added by hand. Changing `todoist_label` therefore leaves the old label attached; remove it yourself if you want it gone.
 - **Renaming a calendar on the server invalidates its markers**, because the calendar name is part of the event hash. The next run deletes the old tasks and recreates them, losing any notes you kept above the separator on those tasks.
-- **Floating events** (no timezone in the source) are resolved against the machine's local timezone, so running cakesync from hosts in different timezones will churn those specific tasks.
+- **Floating events** (no timezone in the source) are read in `timezone`. Changing `timezone` therefore moves those specific tasks.
 
 Reconciliation runs per Todoist project rather than per source, since several calendars can feed one project. A completed event task is not resurrected: cakesync checks completed tasks over the window before creating anything.
 
