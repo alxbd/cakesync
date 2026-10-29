@@ -1,11 +1,11 @@
 [project]
 name = "cakesync"
 version = "0.1.0"
-description = "Stateless sync of contact birthdays from any CardDAV address book into a Todoist project, as yearly recurring tasks."
+description = "Stateless sync of CardDAV contact birthdays and CalDAV calendar events into Todoist projects."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-keywords = ["todoist", "carddav", "birthday", "contacts", "sync", "fastmail", "icloud", "nextcloud"]
+keywords = ["todoist", "carddav", "caldav", "calendar", "birthday", "contacts", "sync", "fastmail", "icloud", "nextcloud"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -22,6 +22,12 @@ dependencies = [
     "requests>=2.31",
     "vobject>=0.9.9",
     "python-dotenv>=1.0",
+    "PyYAML>=6.0",
+    "icalendar>=6.0",
+    "recurring-ical-events>=3.3",
+    # Some events name a TZID without shipping the matching VTIMEZONE block, and
+    # Windows has no system tz database to fall back on.
+    "tzdata>=2024.1",
 ]
 
 [project.urls]
@@ -36,10 +42,34 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["main.py"]
+only-include = [
+    "cakesync.example.yml",
+    "main.py",
+    "config.py",
+    "dav.py",
+    "carddav.py",
+    "caldav.py",
+    "markers.py",
+    "sync.py",
+    "todoist.py",
+]
 
 [tool.hatch.build.targets.sdist]
-include = ["main.py", "README.md", "LICENSE", "pyproject.toml", "tests"]
+include = [
+    "main.py",
+    "config.py",
+    "dav.py",
+    "carddav.py",
+    "caldav.py",
+    "markers.py",
+    "sync.py",
+    "todoist.py",
+    "cakesync.example.yml",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+    "tests",
+]
 
 [dependency-groups]
 dev = [
@@ -60,7 +90,17 @@ ignore = ["E501"]
 quote-style = "double"
 
 [tool.ty.src]
-include = ["main.py", "tests"]
+include = [
+    "main.py",
+    "config.py",
+    "dav.py",
+    "carddav.py",
+    "caldav.py",
+    "markers.py",
+    "sync.py",
+    "todoist.py",
+    "tests",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

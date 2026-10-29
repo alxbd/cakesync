@@ -1,0 +1,151 @@
+# cakesync configuration.
+#
+# Copy this file to cakesync.yml and edit it. Credentials do not go here: they
+# live in .env (see .env.example).
+#
+# Key names follow one rule:
+#   caldav_*   describes the source calendar
+#   todoist_*  describes the tasks cakesync creates in Todoist
+#   sync_*     describes how the sync behaves
+# Units are part of the key name: _days, _hours, _minutes_before, _24h.
+#
+# Write "" for an empty text value. Quote a value that starts with an emoji or
+# a special character.
+
+# Contact birthdays, read from CardDAV. Each contact with a birthday becomes one
+# task that repeats every year. The task title is the contact's name, followed
+# by the birth year in brackets when the contact has one.
+#
+# Remove the whole block to skip birthdays. Only todoist_project_name is
+# required here: every other key has the default given in its comment.
+birthdays:
+  # true or false. false skips birthdays without removing this block.
+  # Default: true.
+  sync_enabled: true
+
+  # Name of the Todoist project that receives the tasks. Required. The match
+  # ignores case, and the project must already exist in Todoist.
+  todoist_project_name: Birthdays
+
+  # Label added to every birthday task, or "" for no label. cakesync creates
+  # the label if it does not exist, and never removes labels you add by hand.
+  # Default: "".
+  todoist_label: ""
+
+  # Text put before the name, usually an emoji, or "" for none. Default: "".
+  todoist_task_emoji: "🎂"
+
+  # Time of the task as 24h HH:MM, or "" for an all-day task. The time is
+  # floating: 09:00 stays 09:00 in any timezone. Default: "".
+  todoist_task_time_of_day_24h: "09:00"
+
+  # Reminders, as a list of minutes before the task's time, each from 0 to
+  # 1440. 0 means at the task's time. [] for no reminder. Needs
+  # todoist_task_time_of_day_24h, because Todoist never fires this kind of
+  # reminder on an all-day task. Reminders need Todoist Pro. Default: [].
+  todoist_reminders_minutes_before: [0]
+
+  # How the name is written: normal, italic or bold. The emoji is never
+  # styled. Default: normal.
+  todoist_task_title_style: normal
+
+  # true makes a normal task with a checkbox. false makes a task without a
+  # checkbox, which cannot be completed: cakesync starts its title with "* ",
+  # which is how Todoist marks such tasks. Default: true.
+  todoist_create_checkable_tasks: true
+
+# Calendar events, read from CalDAV. Each occurrence of an event inside the
+# sync window becomes one task, and the task is deleted after the event ends.
+# Repeating events are expanded, so each occurrence gets its own task. The
+# event's location and description go into the task description. If you
+# complete a task in Todoist, cakesync does not create it again.
+#
+# One entry per source calendar. Every entry must list every key below: there
+# are no defaults and no shared settings block, so a missing key stops cakesync
+# with an error that names it. Several entries may use the same
+# todoist_project_name. Remove the block, or write "calendars: []", to skip
+# calendars.
+calendars:
+  # Name of the calendar exactly as the server shows it. Case matters. If the
+  # name is not found, the error lists the calendars that exist.
+  - caldav_calendar_name: Personal
+
+    # true or false. false stops reading this calendar. Warning: if another
+    # enabled calendar uses the same todoist_project_name, the tasks of this
+    # calendar are deleted on the next run.
+    sync_enabled: true
+
+    # How many days ahead to create tasks, counted from now. A whole number,
+    # 0 or more. Events further away get a task as the window moves forward.
+    sync_window_future_days: 90
+
+    # How many hours a task is kept after its event ends. A whole number, 0 or
+    # more. 0 deletes it on the first run after the event ends. Todoist shows
+    # any task with a past date as Overdue, so keep this low and run cakesync
+    # every hour.
+    sync_retain_after_end_hours: 0
+
+    # What to do with an event that covers several days: an all-day event of
+    # two days or more, or a timed event longer than 24 hours. Todoist cannot
+    # show one task across several days, so choose one of:
+    #   rolling    One task. It is due on the first day, then moves to today
+    #              on each following day, and is deleted when the event ends.
+    #              It never shows as Overdue. Its reminder fires on the first
+    #              day only.
+    #   first_day  One task on the first day only. It is deleted when that
+    #              day ends (plus sync_retain_after_end_hours).
+    #   none       No task at all.
+    # With rolling and first_day, the title ends with the last day of the
+    # event, for example "Workshop (until 13 Nov)".
+    sync_multi_day_mode: rolling
+
+    # Name of the Todoist project that receives the tasks. The match ignores
+    # case, and the project must already exist in Todoist.
+    todoist_project_name: Agenda
+
+    # Label added to every task from this calendar, or "" for no label.
+    # cakesync creates the label if it does not exist, and never removes
+    # labels you add by hand.
+    todoist_label: Personal
+
+    # Text put before the event title, usually an emoji, or "" for none.
+    todoist_task_emoji: "📅"
+
+    # true makes a normal task with a checkbox. false makes a task without a
+    # checkbox, which cannot be completed (its title starts with "* ").
+    todoist_create_checkable_tasks: true
+
+    # How the event title is written: normal, italic or bold. The emoji is
+    # never styled.
+    todoist_task_title_style: italic
+
+    # Reminders for timed events, as a list of minutes before the start, each
+    # from 0 to 1440. 0 means at the start time. [] for no reminder. All-day
+    # events use the next key instead. Reminders need Todoist Pro. If the
+    # "automatic reminders" setting in Todoist already gives one of these
+    # offsets, cakesync does not add a second reminder.
+    todoist_reminders_minutes_before: [10, 60]
+
+    # Reminder time for all-day events, as 24h HH:MM, on the first day of the
+    # event. "" for no reminder on all-day events.
+    todoist_all_day_reminder_time_24h: "09:00"
+
+  # A second calendar. Every key must be listed again.
+  - caldav_calendar_name: Work
+    sync_enabled: true
+    sync_window_future_days: 30
+    sync_retain_after_end_hours: 24
+    sync_multi_day_mode: first_day
+    todoist_project_name: Work
+    todoist_label: Work
+    todoist_task_emoji: "💼"
+    todoist_create_checkable_tasks: false
+    todoist_task_title_style: bold
+    todoist_reminders_minutes_before: [15]
+    todoist_all_day_reminder_time_24h: ""
+
+# Do not list a calendar that Todoist itself publishes (Fastmail shows it as a
+# "Todoist" calendar). Its events are your Todoist tasks, so syncing them back
+# would create copies again and again. As a safety net, cakesync skips events
+# whose UID ends in @todoist.com, but the right fix is to leave that calendar
+# out of this list.

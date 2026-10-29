@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# Personal configuration (calendar names, project mapping)
+cakesync.yml
+
 # Virtual env / build
 .venv/
 .uv/
