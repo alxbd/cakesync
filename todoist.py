@@ -22,6 +22,7 @@ class TodoistClient:
         self.dry_run = dry_run
         self._session = build_session()
         self._session.headers.update({"Authorization": f"Bearer {token}"})
+        self._user: dict | None = None
 
     # -- reads ---------------------------------------------------------------
 
@@ -69,6 +70,18 @@ class TodoistClient:
     def list_reminders(self) -> list[dict]:
         return self._paginated_get("/reminders")
 
+    def _profile(self) -> dict:
+        """The account's profile and settings, fetched once per run."""
+        if self._user is None:
+            r = self._session.get(f"{TODOIST_API}/user", timeout=30)
+            r.raise_for_status()
+            self._user = r.json()
+        return self._user
+
+    def account_timezone(self) -> str | None:
+        """The timezone set on the Todoist account, e.g. "Asia/Phnom_Penh"."""
+        return (self._profile().get("tz_info") or {}).get("timezone") or None
+
     def auto_reminder_offset(self) -> int | None:
         """The user's "automatic reminders" setting, in minutes before due time.
 
@@ -77,9 +90,7 @@ class TodoistClient:
         asked for. Without accounting for it we add a duplicate on the run after
         creation, every time. None means the feature is off.
         """
-        r = self._session.get(f"{TODOIST_API}/user", timeout=30)
-        r.raise_for_status()
-        value = r.json().get("auto_reminder")
+        value = self._profile().get("auto_reminder")
         return value if isinstance(value, int) else None
 
     # -- writes --------------------------------------------------------------

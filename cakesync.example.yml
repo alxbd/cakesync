@@ -19,7 +19,8 @@
 # to show a task as Overdue and to fire reminders. The timezone of the machine
 # that runs cakesync plays no part, so a server in UTC works the same.
 # Use an IANA name, for example Europe/Paris, America/New_York or
-# Asia/Phnom_Penh.
+# Asia/Phnom_Penh. Each run logs a warning if this differs from the timezone
+# set on your Todoist account.
 timezone: Europe/Paris
 
 # Contact birthdays, read from CardDAV. Each contact with a birthday becomes one

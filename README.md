@@ -63,7 +63,7 @@ birthdays:                  # CardDAV contacts
 calendars:                  # one entry per source calendar
 ```
 
-`timezone` decides what "today" is, when a day is over, and whether a reminder time has passed. Set it to the timezone of your Todoist account, which Todoist uses to show tasks as Overdue and to fire reminders. The timezone of the machine running cakesync plays no part, so a server in UTC gives the same result as your laptop.
+`timezone` decides what "today" is, when a day is over, and whether a reminder time has passed. Set it to the timezone of your Todoist account, which Todoist uses to show tasks as Overdue and to fire reminders. The timezone of the machine running cakesync plays no part, so a server in UTC gives the same result as your laptop. Each run compares `timezone` with the one set on your Todoist account and logs a warning when they differ.
 
 Key names follow one rule, so the schema stays predictable:
 

@@ -107,6 +107,18 @@ def main(argv: list[str] | None = None) -> None:
     stats = sync_mod.Stats()
     auto_reminder_offset = client.auto_reminder_offset()
 
+    # Todoist decides Overdue and fires reminders in the account's timezone, so
+    # a different value in cakesync.yml shifts every date decision.
+    account_tz = client.account_timezone()
+    if account_tz and account_tz != str(config.timezone):
+        log.warning(
+            "timezone in cakesync.yml is %s, but your Todoist account uses %s. "
+            "cakesync follows cakesync.yml; set it to %s unless that is deliberate.",
+            config.timezone,
+            account_tz,
+            account_tz,
+        )
+
     names = sync_mod.project_names(config)
     if args.only == "birthdays" and config.birthdays:
         names = {config.birthdays.todoist_project_name}
